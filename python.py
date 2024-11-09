@@ -17,6 +17,7 @@ builtin_libraries = [
 class ShitCodeTransformer(ast.NodeTransformer):
     def __init__(self):
         self.imports = []  # 存储修改后的导入语句
+        self.global_vars = set()  # 存储全局变量名称，避免冲突
 
     def visit_Import(self, node):
         # 只修改别名部分，而不修改库名
@@ -37,15 +38,15 @@ class ShitCodeTransformer(ast.NodeTransformer):
         old_name = node.name
         node.name = random_function_name()
 
-        # 添加无意义的循环或者冗余代码，使得函数内容不再清晰
-        for _ in range(random.randint(0, 2)):  # 添加随机数量的无效循环
-            new_node = ast.For(
-                target=ast.Name(id='i', ctx=ast.Store()),
-                iter=ast.Call(func=ast.Name(id='range', ctx=ast.Load()), args=[ast.Constant(value=10)], keywords=[]),
-                body=[ast.Pass()],
-                orelse=[]
-            )
-            node.body.append(new_node)
+        # 在函数体中使用全局变量替代局部变量
+        for i, stmt in enumerate(node.body):
+            if isinstance(stmt, ast.Assign):
+                for target in stmt.targets:
+                    if isinstance(target, ast.Name):
+                        # 如果目标变量已经存在于全局变量中，跳过
+                        if target.id not in self.global_vars:
+                            target.id = random.choice(['global_' + ''.join(random.choices(string.ascii_lowercase, k=6)) for _ in range(3)])
+                            self.global_vars.add(target.id)
 
         # 修改函数调用时的名称为新的随机名称
         self.replace_function_calls(old_name, node.name)
@@ -59,9 +60,13 @@ class ShitCodeTransformer(ast.NodeTransformer):
         return node
 
     def visit_Assign(self, node):
-        # 替换变量名称为无意义的名称
+        # 替换变量名称为全局变量，且不与现有全局变量冲突
         if isinstance(node.targets[0], ast.Name):
-            node.targets[0].id = random.choice(['qwerty', 'abcd', 'zxcvbnm', 'asdfgh', 'randomname'])
+            new_name = random.choice(['global_' + ''.join(random.choices(string.ascii_lowercase, k=6)) for _ in range(3)])
+            while new_name in self.global_vars:  # 确保新变量名不冲突
+                new_name = random.choice(['global_' + ''.join(random.choices(string.ascii_lowercase, k=6)) for _ in range(3)])
+            node.targets[0].id = new_name
+            self.global_vars.add(new_name)
         return node
 
     def visit_Expr(self, node):
