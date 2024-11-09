@@ -14,10 +14,25 @@ builtin_libraries = [
     'os', 'sys', 'math', 'time', 'random', 'collections', 'functools', 'itertools', 'pickle', 'socket'
 ]
 
+# 随机生成无意义的注释，确保不会嵌套引号
+def random_comment():
+    # 随机决定使用字符串字面量还是传统的 # 注释
+    if random.choice([True, False]):
+        # 字符串注释形式：确保注释不包含 ''' 或 """
+        comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
+        while "'''" in comment or '"""' in comment:
+            comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
+        return f"''' {comment} '''"
+    else:
+        # # 注释形式
+        comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
+        return f"# {comment}"
+
 class ShitCodeTransformer(ast.NodeTransformer):
     def __init__(self):
         self.imports = []  # 存储修改后的导入语句
         self.global_vars = set()  # 存储全局变量名称，避免冲突
+        self.remove_comments = random.choice([True, False])  # 随机决定是否去除注释
 
     def visit_Import(self, node):
         # 只修改别名部分，而不修改库名
@@ -51,10 +66,13 @@ class ShitCodeTransformer(ast.NodeTransformer):
         # 修改函数调用时的名称为新的随机名称
         self.replace_function_calls(old_name, node.name)
 
+        # 添加无意义的注释
+        node.body.insert(random.randint(0, len(node.body)), ast.Expr(value=ast.Str(s=random_comment())))
+
         return node
 
     def visit_Call(self, node):
-        # 遍历函数调用，将函数名称替换为新名称
+        # 遍历AST树中的所有调用，将函数名称替换为新名称
         if isinstance(node.func, ast.Name):
             node.func.id = random_function_name()
         return node
@@ -67,12 +85,10 @@ class ShitCodeTransformer(ast.NodeTransformer):
                 new_name = random.choice(['global_' + ''.join(random.choices(string.ascii_lowercase, k=6)) for _ in range(3)])
             node.targets[0].id = new_name
             self.global_vars.add(new_name)
-        return node
 
-    def visit_Expr(self, node):
-        # 如果存在print等表达式，替换为一个无关的函数调用
-        if isinstance(node.value, ast.Call):
-            node.value.func = ast.Name(id=random_function_name(), ctx=ast.Load())
+        # 添加无意义的注释
+        node.value = ast.Call(func=ast.Name(id=random_function_name(), ctx=ast.Load()), args=[], keywords=[])
+        node.value.lineno = node.lineno  # 保证注释不影响代码格式
         return node
 
     def replace_function_calls(self, old_name, new_name):
@@ -96,9 +112,22 @@ class ShitCodeTransformer(ast.NodeTransformer):
         # 将所有的导入语句添加到模块体的开头
         node.body = self.imports + node.body
 
-        # 然后继续处理AST
+        # 处理代码体中的所有节点
         for stmt in node.body:
             self.visit(stmt)
+
+        # 如果需要去除注释，删除所有注释节点
+        if self.remove_comments:
+            node.body = [stmt for stmt in node.body if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Str)]
+        else:
+            # 否则，替换注释为随机注释
+            for stmt in node.body:
+                if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Str):
+                    stmt.value.s = random_comment()  # 替换注释内容
+
+        # 始终插入一些无意义的注释
+        for i in range(random.randint(1, 3)):  # 随机添加1到3个无意义注释
+            node.body.insert(random.randint(0, len(node.body)), ast.Expr(value=ast.Str(s=random_comment())))
 
         return node
 
@@ -127,14 +156,16 @@ original_code = """
 import math
 import random
 
+# This is a simple add function
 def add(a, b):
     return a + b
 
 def main():
+    # Adding two numbers
     x = 5
     y = 10
     result = add(x, y)
-    print(f"Result: {result}")
+    print(f"Result: {result}")  # Print the result
 
 if __name__ == "__main__":
     main()
