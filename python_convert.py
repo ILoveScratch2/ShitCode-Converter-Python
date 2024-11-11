@@ -18,15 +18,21 @@ builtin_libraries = [
 def random_comment():
     # 随机决定使用字符串字面量还是传统的 # 注释
     if random.choice([True, False]):
-        # 字符串注释形式：确保注释不包含 ''' 或 """
+        # 字符串注释形式：确保注释不包含 ''' 或 """ 或单引号
         comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
-        while "'''" in comment or '"""' in comment:
+        while "'''" in comment or '"""' in comment or "'" in comment:
             comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
         return f"''' {comment} '''"
     else:
-        # # 注释形式
+        # # 注释形式：确保注释不包含单引号
         comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
+        while "'" in comment or '"' in comment:
+            comment = ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
         return f"# {comment}"
+
+
+
+
 
 class ShitCodeTransformer(ast.NodeTransformer):
     def __init__(self):
@@ -72,10 +78,12 @@ class ShitCodeTransformer(ast.NodeTransformer):
         return node
 
     def visit_Call(self, node):
-        # 遍历AST树中的所有调用，将函数名称替换为新名称
         if isinstance(node.func, ast.Name):
-            node.func.id = random_function_name()
+            # 确保不替换 print 函数
+            if node.func.id != 'print':
+                node.func.id = random_function_name()
         return node
+
 
     def visit_Assign(self, node):
         # 替换变量名称为全局变量，且不与现有全局变量冲突
@@ -130,6 +138,31 @@ class ShitCodeTransformer(ast.NodeTransformer):
             node.body.insert(random.randint(0, len(node.body)), ast.Expr(value=ast.Str(s=random_comment())))
 
         return node
+def visit_BinOp(self, node):
+    # 递归访问左右操作数
+    self.generic_visit(node)
+
+    # 随机生成空格
+    left_spaces = ' ' * random.randint(0, 3)
+    right_spaces = ' ' * random.randint(0, 3)
+
+    # 创建新的操作符节点
+    new_node = ast.BinOp(
+        left=ast.BinOp(left=node.left, op=node.op, right=ast.Str(s=left_spaces)),
+        op=node.op,
+        right=ast.BinOp(left=ast.Str(s=right_spaces), op=node.op, right=node.right)
+    )
+
+    return new_node
+
+
+
+        
+    def visit(self, node):
+        # 处理二元操作符
+        if isinstance(node, ast.BinOp):
+            return self.visit_BinOp(node)
+        return self.generic_visit(node)
 
 
 def generate_shitcode(code):
@@ -142,33 +175,13 @@ def generate_shitcode(code):
 
 
 def unparse_ast(tree):
-    try:
-        # 尝试使用 ast.unparse (适用于 Python 3.9 及以上版本)
-        return ast.unparse(tree)
-    except AttributeError:
-        # 对于旧版本 Python（低于 3.9），使用 astor
-        import astor
-        return astor.to_source(tree)
+    return ast.unparse(tree)
 
 
 # 原始干净的 Python 代码
 original_code = """
-import math
-import random
-
-# This is a simple add function
-def add(a, b):
-    return a + b
-
-def main():
-    # Adding two numbers
-    x = 5
-    y = 10
-    result = add(x, y)
-    print(f"Result: {result}")  # Print the result
-
-if __name__ == "__main__":
-    main()
+print("Hello, world!")
+print(1124+1)
 """
 
 # 生成 Shitcode
